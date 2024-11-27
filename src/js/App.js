@@ -15,6 +15,7 @@ class App {
     const root = Engine.CreateRoot('#app-target', {
       Camera: {
         orthographic: true,
+        width: 11,
         followPlayer: false,
       },
       Player: {

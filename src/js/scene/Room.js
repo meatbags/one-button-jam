@@ -5,8 +5,12 @@ import * as THREE from 'three';
 import Path from './Path';
 
 class Room extends SceneNode {
-  static NUM_ROOMS = 1;
-  static DEFAULT_SIZE = 4;
+  static ROOM_UID = 1;
+  static DEFAULT_SIZE = 4.25;
+  static ROOM_HEX = 0x4da36b;
+  static EXIT_OFFSET_MIN = 0.2;
+  static EXIT_OFFSET_MAX = 0.8;
+  static EXIT_OFFSET_STEP = 0.2;
   static CARDINAL = [
     new THREE.Vector3(0, 0, -1),
     new THREE.Vector3(1, 0, 0),
@@ -15,16 +19,16 @@ class Room extends SceneNode {
   ];
 
   constructor(props={}) {
-    super({ label: 'Room_' + Room.NUM_ROOMS });
+    super({ label: 'Room_' + (++Room.ROOM_UID) });
     this.isRoom = true;
-    Room.NUM_ROOMS += 1;
 
     // props
     this.position = props.position || new THREE.Vector3();
     this.size = props.size || new THREE.Vector3().setScalar(Room.DEFAULT_SIZE);
     this.extent = this.size.clone().multiplyScalar(0.5);
     this.entrances = props.entrances || [ new THREE.Vector3(-this.extent.x, 0, 0) ];
-    this.numPaths = Math.max(props.numPaths || 3, this.entrances.length);
+    this.validEntrance = props.validEntrance || this.entrances[0];
+    this.numPaths = Math.max(props.numPaths || 2, this.entrances.length);
     this.playerInRoom = false;
     this.activePath = null;
     this.selectedPathIndex = 0;
@@ -49,48 +53,88 @@ class Room extends SceneNode {
     this.group.position.copy(this.position);
     this._addToScene(this.group);
 
-    // create floor
-    const geo = new THREE.PlaneGeometry(this.size.x, this.size.z, 5, 5);
-    const mat = new THREE.MeshBasicMaterial({color: 0x0000ff, transparent: true, wireframe: true });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.x = -Math.PI / 2;
-    this.group.add(mesh);
+    // create floor block
     const geo2 = new THREE.BoxGeometry(this.size.x, 0.5, this.size.z);
     geo2.translate(0, -0.25, 0);
-    const mat2 = new THREE.MeshBasicMaterial({color: 0x0000ff, transparent: true, opacity: 0.35 });
+    const mat2 = new THREE.MeshPhysicalMaterial({color: 0x87d0b7, transparent: true });
     const mesh2 = new THREE.Mesh(geo2, mat2);
-    mat2.userData.opacity = 0.35;
+    mesh2.receiveShadow = true;
+    mesh2.castShadow = true;
     this.group.add(mesh2);
 
-    // box helper
-    const boxGeo = new THREE.BoxGeometry(this.size.x, this.size.y, this.size.z);
-    const boxMat = new THREE.MeshBasicMaterial({color: 0x0000ff, wireframe: true});
-    const box = new THREE.Mesh(boxGeo, boxMat);
-
-    // create path/s
+    // create valid path/s
     this.paths = [];
-    while (this.paths.length < this.numPaths) {
-      this.entrances.forEach(entrance => {
-        if (this.paths.length < this.numPaths) {
-          this.createPath(entrance);
-        }
-      });
+    for (let i=0; i<this.numPaths; i++) {
+      this.createPath(this.validEntrance);
     }
 
-    // create path marker, ui focus helper
+    // get clockwise distance on perimeter
+    const corners = Room.CARDINAL.map(dir => {
+      const p = new THREE.Vector3().copy(dir).multiply(this.extent)
+        .add(new THREE.Vector3(-dir.z, 0, dir.x).multiply(this.extent));
+      return p;
+    });
+    const cardinalIndex = Room.CARDINAL.findIndex(dir =>
+      this.isInCardinalDirection(this.validEntrance, dir));
+
+    const getClockwiseDistance = path => {
+      const exit = path.getExit();
+      let dist = 0;
+      for (let i=0; i<Room.CARDINAL.length-1; i++) {
+        const dirIndex = (cardinalIndex + i + 1) % Room.CARDINAL.length;
+        const cornerIndex = (cardinalIndex + i) % Room.CARDINAL.length;
+        const dir = Room.CARDINAL[dirIndex];
+        const corner = corners[cornerIndex];
+        if (this.isInCardinalDirection(exit, dir)) {
+          dist += corner.distanceTo(exit);
+          break;
+        } else {
+          dist += dir.x === 0 ? this.size.x : this.size.z;
+        }
+      }
+      return dist;
+    };
+
+    // sort paths clockwise
+    this.paths = this.paths.sort(
+      (a, b) => getClockwiseDistance(a) - getClockwiseDistance(b));
+
+    // select random path
+    this.selectedPathIndex = Math.floor(Math.random() * this.paths.length);
+
+    // create path marker, smaller path marker
     const markerGeo = new THREE.ConeGeometry(0.25, 1, 32);
     markerGeo.rotateX(Math.PI);
     markerGeo.translate(0, 0.5, 0);
-    const markerMat = new THREE.MeshBasicMaterial({color: 0xff0000});
-    this.pathMarker = new THREE.Mesh(markerGeo, markerMat);
+    const markerMat = new THREE.MeshPhysicalMaterial({color: 0xffff00});
+    this.pathMarkerMesh = new THREE.Mesh(markerGeo, markerMat);
+    // this.pathMarkerMesh.castShadow = true;
+    this.pathMarker = new THREE.Group();
     this.pathMarker.visible = false;
+    this.pathMarker.add(this.pathMarkerMesh);
+    const markerGeo2 = new THREE.ConeGeometry(0.25, 1, 32);
+    markerGeo2.rotateX(Math.PI);
+    markerGeo2.translate(0, 0.5, 0);
+    const markerMat2 = new THREE.MeshPhysicalMaterial({color: 0xffff00});
+    this.pathMarkerMesh2 = new THREE.Mesh(markerGeo, markerMat);
+    this.pathMarkerMesh2.scale.setScalar(0.4);
+    // this.pathMarkerMesh.castShadow = true;
+    this.pathMarker2 = new THREE.Group();
+    this.pathMarker2.visible = false;
+    this.pathMarker2.add(this.pathMarkerMesh2);
+
+    // add to group
+    this.group.add(this.pathMarker, this.pathMarker2);
+
+    // focus helper
     const mat3 = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true });
+    const geo = new THREE.PlaneGeometry(this.size.x, this.size.z);
     const mesh3 = new THREE.Mesh(geo, mat3);
     mesh3.rotation.x = -Math.PI / 2;
     mesh3.position.y += 0.01;
     this.focusHelper = mesh3;
     this.focusHelper.visible = false;
-    this.group.add(this.pathMarker, this.focusHelper);
+    this.group.add(this.focusHelper);
 
     // set initial path marker
     this.setPathMarker();
@@ -101,22 +145,32 @@ class Room extends SceneNode {
 
   /** create path */
   createPath(entrance) {
-    // create exit
-    const dirs = Room.CARDINAL.filter(dir => !this.isInCardinalDirection(entrance, dir));
-    if (dirs.length === 0) {
-      console.warn('error', dirs);
+    // create exit/s
+    if (!this.availableExits) {
+      this.availableExits = [];
+      Room.CARDINAL.forEach(dir => {
+        if (!this.isInCardinalDirection(entrance, dir)) {
+          for (let d=Room.EXIT_OFFSET_MIN; d<=Room.EXIT_OFFSET_MAX; d+= Room.EXIT_OFFSET_STEP) {
+            const exit = dir.clone().multiply(this.extent);
+            if (dir.x === 0) {
+              exit.x = -this.extent.x + d * this.size.x;
+            } else if (dir.z === 0) {
+              exit.z = -this.extent.z + d * this.size.z;
+            }
+            this.availableExits.push(exit)
+          }
+        }
+      });
+    }
+
+    // no exits
+    if (!this.availableExits.length) {
       return;
     }
-    const dir = dirs[Math.floor(Math.random() * dirs.length)];
-    const exit = dir.clone().multiply(this.extent);
-    const max = 0.8;
-    const step = 0.2;
-    const n = max / step;
-    if (dir.x === 0) {
-      exit.x += Math.round(n * (Math.random() * 2 - 1)) * step * this.extent.x;
-    } else if (dir.z === 0) {
-      exit.z += Math.round(n * (Math.random() * 2 - 1)) * step * this.extent.z;
-    }
+
+    // get random exit, remove
+    const index = Math.floor(Math.random() * this.availableExits.length);
+    const exit = this.availableExits.splice(index, 1)[0];
 
     // create path
     const path = new Path(entrance, exit);
@@ -144,8 +198,25 @@ class Room extends SceneNode {
   /** set path marker position */
   setPathMarker() {
     if (!this.paths) return;
+
+    // set marker
     const path = this.paths[this.selectedPathIndex];
     this.pathMarker.position.copy(path.getExit());
+    this.pathMarker.position.y += Path.VERTICAL_OFFSET;
+
+    // set marker 2
+    if (this.paths.length > 1) {
+      const path2 = this.paths[(this.selectedPathIndex + 1) % this.paths.length];
+      this.pathMarker2.position.copy(path2.getExit());
+      this.pathMarker2.position.y += Path.VERTICAL_OFFSET;
+    }
+
+    this.paths.forEach(p => {
+      if (p.id !== path.id) {
+        p.blur();
+      }
+    });
+    path.focus();
   }
 
   /** get current path exit */
@@ -167,23 +238,30 @@ class Room extends SceneNode {
   }
 
   /** get rooms adjoining this */
-  createAdjoiningRooms() {
+  createAdjoiningRooms(numPaths) {
     // get room exits
     const exits = this.paths.map(p => p.getExit().clone());
     const validExit = this.getExit();
-    const nextRoomValidEntrance = validExit ? this.getFlippedPosition(validExit) : null;
+    const nextValidEntrance = validExit ? this.getFlippedPosition(validExit) : null;
 
     // get rooms NESW
     const rooms = [];
     Room.CARDINAL.forEach(dir => {
+      if (!this.isInCardinalDirection(validExit, dir)) {
+        return;
+      }
       const filtered = exits.filter(p => this.isInCardinalDirection(p, dir));
-      if (!filtered.length) return;
+      if (!filtered.length) {
+        console.warn('No exit rooms found:', this);
+        return;
+      }
       const roomPosition = this.position.clone();
       roomPosition.add(dir.clone().multiply(this.size));
       rooms.push(new Room({
         position: roomPosition,
         entrances: filtered.map(p => this.getFlippedPosition(p)),
-        validEntrance: nextRoomValidEntrance ? nextRoomValidEntrance.clone() : null,
+        validEntrance: nextValidEntrance ? nextValidEntrance.clone() : null,
+        numPaths: numPaths,
       }));
     });
 
@@ -226,14 +304,16 @@ class Room extends SceneNode {
     this.hasFocus = true;
 
     // ensure index set to valid path
-    if (!this.paths[this.selectedPathIndex].getEntrance().equals(entrance)) {
+    if (
+      !this.paths[this.selectedPathIndex]
+        .getEntrance().equals(entrance)
+    ) {
       this.incrementPathSelection(entrance);
     }
 
-    // ensure minimum 2 choices
+    // check exits > 1
     if (this.countExitsFrom(entrance) < 2) {
-      this.createPath(entrance);
-      console.log('Creating new path');
+      console.warn('< 2 exits', this);
     }
 
     // create dangerous path/s
@@ -247,7 +327,7 @@ class Room extends SceneNode {
       });
     }
 
-    // dull invalid paths
+    // colour code non-paths
     this.paths.forEach(p => {
       if (!p.getEntrance().equals(entrance)) {
         p.makeInactive();
@@ -257,6 +337,7 @@ class Room extends SceneNode {
     // show ui elements
     this.focusHelper.visible = true;
     this.pathMarker.visible = true;
+    this.pathMarker2.visible = true;
   }
 
   /** blur focus */
@@ -267,6 +348,7 @@ class Room extends SceneNode {
     // hide ui elements
     this.focusHelper.visible = false;
     this.pathMarker.visible = false;
+    this.pathMarker2.visible = false;
   }
 
   /** animate in */
@@ -331,13 +413,13 @@ class Room extends SceneNode {
     const p = this.ref.Player.getPosition().clone();
     p.x -= this.position.x;
     p.z -= this.position.z;
-    this.activePath.movePosition(p, delta, speed);
+    const inPath = this.activePath.movePosition(p, delta, speed);
     p.x += this.position.x;
     p.z += this.position.z;
     this.ref.Player.setPosition(p);
 
     // exit room
-    if (!this.contains(p)) {
+    if (!inPath) {
       if (this.onExit) {
         this.onExit(this);
       }
@@ -350,6 +432,19 @@ class Room extends SceneNode {
     if (Math.abs(p.z) === this.extent.z) flipped.z *= -1;
     if (Math.abs(p.x) === this.extent.x) flipped.x *= -1;
     return flipped;
+  }
+
+  /** @override */
+  _update(delta) {
+    if (!this.hasFocus) return;
+    if (!this.pathMarkerMesh.userData.age) {
+      this.pathMarkerMesh.userData.age = 0;
+      this.pathMarkerMesh2.userData.age = 0;
+    }
+    this.pathMarkerMesh.userData.age += delta;
+    this.pathMarkerMesh2.userData.age += delta;
+    this.pathMarkerMesh.position.y = Math.sin(this.pathMarkerMesh.userData.age * 0.5 * Math.PI * 2) * 0.25 + 0.25;
+    this.pathMarkerMesh2.position.y = Math.sin(this.pathMarkerMesh2.userData.age * 0.5 * Math.PI * 2) * 0.125 + 0.25;
   }
 }
 

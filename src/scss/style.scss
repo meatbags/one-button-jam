@@ -1,9 +1,10 @@
 // setup
 @import './util/fonts';
 
-// overrides
+// override
 @import './modules/global';
 @import './modules/engine';
 
 // custom
 @import './modules/game';
+@import './modules/timeline';

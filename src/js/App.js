@@ -15,7 +15,7 @@ class App {
     const root = Engine.CreateRoot('#app-target', {
       Camera: {
         orthographic: true,
-        width: 11,
+        width: 12,
         followPlayer: false,
       },
       Player: {
@@ -28,6 +28,9 @@ class App {
         keyboard: true,
         pointerControls: false,
       },
+      Renderer: {
+        shadows: true,
+      },
       History: {
         disabled: true,
       }
@@ -36,10 +39,17 @@ class App {
 
     // set up scene
     const scene = root.getModule('Scene');
-    scene.setBackground(0x0);
+    scene.setBackground(0x406659);
 
     // set up audio
     const audioHandler = root.getModule('AudioHandler');
+
+    // add envmap
+    const env = root.getModule('Environment');
+    env.addTexture('envMap', './textures/rect.jpg', {
+      mapping: THREE.EquirectangularReflectionMapping,
+      colorSpace: THREE.SRGBColorSpace
+    });
 
     // set up camera, renderer
     const camera = root.getModule('Camera');
@@ -77,6 +87,9 @@ class App {
     root.getModule('UserInterface').addEventListener('key', keyboard => {
       if (keyboard.isKeyDown('e') && root.getModule('MainLoop').isPaused()) {
         root.resumeGame();
+        setTimeout(() => {
+          root._getSceneNode('Game').activate();
+        }, 200);
       }
     });
 

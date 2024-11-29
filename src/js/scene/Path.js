@@ -39,6 +39,9 @@ class Path extends SceneNode {
     const thresh2 = Math.pow(Path.COLLISION_THRESHOLD, 2);
     const curvePath = new THREE.CurvePath();
     this.points.forEach((p, i) => {
+      if (i === 0 || i === this.points.length - 1) {
+        return;
+      }
       const h = Path.VERTICAL_OFFSET + p.y;
       const geo = new THREE.CylinderGeometry(0.05, 0.05, h, 16);
       geo.translate(0, -h/2, 0);
@@ -158,17 +161,31 @@ class Path extends SceneNode {
   /** make path dangerous */
   makeDangerous() {
     this.dangerous = true;
-    // this.lineMesh.material.color.set(0xff0000);
 
     // visual
-    const ball = new THREE.SphereGeometry(Game.PLAYER_RADIUS/2, 32, 32);
-    ball.translate(0, Game.PLAYER_RADIUS/2 + Path.VERTICAL_OFFSET, 0);
-    const mat = new THREE.MeshPhysicalMaterial({ color: 0xff0000, metalness: 0.5, roughness: 0.2, });
-    mat.envMap = this._getModule('Environment').getTexture('envMap');
-    const mesh = new THREE.Mesh(ball, mat);
-    this.curve.getPointAt(1, mesh.position);
-    mesh.castShadow = true;
-    this.parent.group.add(mesh);
+    let uStart = 0.5;
+    let uStep = 0.04;
+    let u = uStart;
+    this.dangerousMeshes = [];
+    while (u < 1) {
+      if (Math.random() < u) {
+        let rad = 0.05 + Game.PLAYER_RADIUS * 0.5 * u + Math.random() * Game.PLAYER_RADIUS * 0.5;
+        rad *= 0.1 + ((u - uStart) / (1 - uStart)) * 0.9;
+        const ball = new THREE.BoxGeometry(rad, rad, rad);
+        ball.translate(0, rad / 2 + Path.VERTICAL_OFFSET, 0);
+        const mat = new THREE.MeshPhysicalMaterial({ color: Path.HEX, metalness: 0.5, roughness: 0.2, });
+        mat.envMap = this._getModule('Environment').getTexture('envMap');
+        const mesh = new THREE.Mesh(ball, mat);
+        mesh.rotation.y = Math.PI * Math.random();
+        this.curve.getPointAt(u, mesh.position);
+        mesh.position.x += (Math.random() * 2 - 1) * 0.1;
+        mesh.position.z += (Math.random() * 2 - 1) * 0.1;
+        mesh.castShadow = true;
+        this.parent.group.add(mesh);
+        this.dangerousMeshes.push(mesh);
+      }
+      u += uStep;
+    }
   }
 
   /** make inactive */
@@ -187,14 +204,15 @@ class Path extends SceneNode {
   movePosition(p, delta, speed) {
     // get initial position
     if (this.traversed === 0) {
-      this.traversed = Clamp(p.distanceTo(this.points[0]), 0, this.length);
+      this.traversed = Clamp(
+        p.distanceTo(this.points[0]), 0, this.length);
     }
 
     // increase distance traversed
     this.traversed += speed * delta;
 
     // move along curve
-    if (this.traversed <= this.length) {
+    if (this.traversed < this.length) {
       const u = this.traversed / this.length;
       this.curve.getPointAt(u, p);
 
@@ -202,8 +220,9 @@ class Path extends SceneNode {
     } else {
       const a = this.points[this.points.length - 2];
       const b = this.points[this.points.length - 1];
-      const v = b.clone().sub(a).normalize().multiplyScalar(this.traversed - this.length);
-      p.add(v);
+      const v = b.clone().sub(a).normalize();
+      v.multiplyScalar(this.traversed - this.length);
+      p.copy(b).add(v);
     }
 
     return this.traversed <= this.length;

@@ -7,7 +7,8 @@ import Path from './Path';
 class Room extends SceneNode {
   static ROOM_UID = 1;
   static DEFAULT_SIZE = 4.25;
-  static ROOM_HEX = 0x4da36b;
+  static ROOM_HEX = 0x87d0b7;
+  static ROOM_HEX_FOCUS = 0x87d0b7; // 0x94d5a3;
   static EXIT_OFFSET_MIN = 0.2;
   static EXIT_OFFSET_MAX = 0.8;
   static EXIT_OFFSET_STEP = 0.2;
@@ -28,7 +29,7 @@ class Room extends SceneNode {
     this.extent = this.size.clone().multiplyScalar(0.5);
     this.entrances = props.entrances || [ new THREE.Vector3(-this.extent.x, 0, 0) ];
     this.validEntrance = props.validEntrance || this.entrances[0];
-    this.numPaths = Math.max(props.numPaths || 2, this.entrances.length);
+    this.numPaths = Math.max(props.numPaths || 1, this.entrances.length);
     this.playerInRoom = false;
     this.activePath = null;
     this.selectedPathIndex = 0;
@@ -56,11 +57,12 @@ class Room extends SceneNode {
     // create floor block
     const geo2 = new THREE.BoxGeometry(this.size.x, 0.5, this.size.z);
     geo2.translate(0, -0.25, 0);
-    const mat2 = new THREE.MeshPhysicalMaterial({color: 0x87d0b7, transparent: true });
-    const mesh2 = new THREE.Mesh(geo2, mat2);
-    mesh2.receiveShadow = true;
-    mesh2.castShadow = true;
-    this.group.add(mesh2);
+    const mat2 = new THREE.MeshPhysicalMaterial({color: Room.ROOM_HEX, transparent: true });
+    this.floorMesh = new THREE.Mesh(geo2, mat2);
+    this.floorMesh.receiveShadow = true;
+    this.floorMesh.castShadow = true;
+    this.floorMesh.scale.set(0.98, 1, 0.98);
+    this.group.add(this.floorMesh);
 
     // create valid path/s
     this.paths = [];
@@ -127,14 +129,14 @@ class Room extends SceneNode {
     this.group.add(this.pathMarker, this.pathMarker2);
 
     // focus helper
-    const mat3 = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true });
-    const geo = new THREE.PlaneGeometry(this.size.x, this.size.z);
-    const mesh3 = new THREE.Mesh(geo, mat3);
-    mesh3.rotation.x = -Math.PI / 2;
-    mesh3.position.y += 0.01;
-    this.focusHelper = mesh3;
-    this.focusHelper.visible = false;
-    this.group.add(this.focusHelper);
+    //const mat3 = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true });
+    //const geo = new THREE.PlaneGeometry(this.size.x, this.size.z);
+    //const mesh3 = new THREE.Mesh(geo, mat3);
+    //mesh3.rotation.x = -Math.PI / 2;
+    //mesh3.position.y += 0.01;
+    //this.focusHelper = mesh3;
+    //this.focusHelper.visible = false;
+    //this.group.add(this.focusHelper);
 
     // set initial path marker
     this.setPathMarker();
@@ -268,6 +270,24 @@ class Room extends SceneNode {
     return rooms;
   }
 
+  /** create rest room -- one path */
+  createRestRoom() {
+    const validExit = this.getExit();
+    const nextValidEntrance = this.getFlippedPosition(validExit).clone();
+    const dir = Room.CARDINAL.find(dir => this.isInCardinalDirection(validExit, dir));
+    const roomPosition = this.position.clone();
+    roomPosition.add(dir.clone().multiply(this.size));
+    const rooms = [
+      new Room({
+        position: roomPosition,
+        entrances: [nextValidEntrance],
+        validEntrance: nextValidEntrance,
+        numPaths: 1,
+      })
+    ];
+    return rooms;
+  }
+
   /** check room is adjacent */
   isAdjacentTo(room) {
     const dx = Math.abs(room.position.x - this.position.x);
@@ -299,45 +319,33 @@ class Room extends SceneNode {
   }
 
   /** focus on room, validate entrance */
-  focus(entrance, danger=0.5) {
+  focus(entrance) {
     if (this.hasFocus) return;
     this.hasFocus = true;
 
     // ensure index set to valid path
-    if (
-      !this.paths[this.selectedPathIndex]
-        .getEntrance().equals(entrance)
-    ) {
+    if (!this.paths[this.selectedPathIndex].getEntrance().equals(entrance)) {
       this.incrementPathSelection(entrance);
-    }
-
-    // check exits > 1
-    if (this.countExitsFrom(entrance) < 2) {
-      console.warn('< 2 exits', this);
     }
 
     // create dangerous path/s
     const valid = this.paths.filter(p => p.getEntrance().equals(entrance));
-    if (valid.length > 1) {
-      const safeIndex = Math.floor(Math.random() * valid.length);
-      valid.forEach((p, i) => {
-        if (i !== safeIndex && Math.random() <= danger) {
-          p.makeDangerous();
-        }
-      });
+    if (valid.length >= 2) {
+      const n = 1 + (valid.length > 2 ? Math.floor(Math.random() * (valid.length - 1)) : 0);
+      for (let i=0; i<n; i++) {
+        const index = Math.floor(Math.random() * valid.length);
+        valid[index].makeDangerous();
+        valid.splice(index, 1);
+      }
     }
 
-    // colour code non-paths
-    this.paths.forEach(p => {
-      if (!p.getEntrance().equals(entrance)) {
-        p.makeInactive();
-      }
-    });
-
     // show ui elements
-    this.focusHelper.visible = true;
+    // this.focusHelper.visible = true;
+    this.floorMesh.material.color.setHex(Room.ROOM_HEX_FOCUS);
     this.pathMarker.visible = true;
-    this.pathMarker2.visible = true;
+    if (this.paths.length > 1) {
+      this.pathMarker2.visible = true;
+    }
   }
 
   /** blur focus */
@@ -346,7 +354,8 @@ class Room extends SceneNode {
     this.hasFocus = false;
 
     // hide ui elements
-    this.focusHelper.visible = false;
+    // this.focusHelper.visible = false;
+    this.floorMesh.material.color.setHex(Room.ROOM_HEX);
     this.pathMarker.visible = false;
     this.pathMarker2.visible = false;
   }
@@ -426,7 +435,7 @@ class Room extends SceneNode {
     }
   }
 
-  /** util: get flipped position across cardinal axes */
+  /** util: get flipped position across centre line */
   getFlippedPosition(p) {
     const flipped = p.clone();
     if (Math.abs(p.z) === this.extent.z) flipped.z *= -1;

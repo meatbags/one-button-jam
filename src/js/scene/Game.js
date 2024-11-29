@@ -1,36 +1,39 @@
 /** Game */
 
-import { SceneNode, EventPlane, BlendVector3, UIElement, Animation } from 'engine';
+import { SceneNode, EventPlane, Blend, Clamp, BlendVector3, UIElement, Animation, MinAngleBetween } from 'engine';
 import * as THREE from 'three';
-import GameOverlay from './GameOverlay';
 import Room from './Room';
 import Path from './Path';
 
 class Game extends SceneNode {
   static PLAYER_RADIUS = 0.2;
   static PATHS_INITIAL = 2;
+  static PATHS_INCREMENT = 1;
   static SPEED_INITIAL = 1.5;
-  static ZOOM_INITIAL = 1;
+  static SPEED_INCREMENT = 0.375;
+  static SCORE_INITIAL = 5;
   static ZOOM_INCREMENT = 0.75;
+  static CAMERA_OFFSET = new THREE.Vector3(-5, 7.5, 5);
+  static STATE_HOLDING = 0x1;
+  static STATE_GAME = 0x2;
+  static STATE_DEAD = 0x3;
+  static STATE_SUCCESS = 0x4;
+  static PLAYER_RGB = [0.26, 0.26, 0.26];
+  static PLAYER_RGB_ALT = [1, 0, 0];
 
   constructor() {
     super({label: 'Game'});
 
     // props
     this.age = 0;
-    this.score = 0;
+    this.score = Game.SCORE_INITIAL;
     this.numPaths = Game.PATHS_INITIAL;
     this.currentSpeed = Game.SPEED_INITIAL;
+    this.speedDeathMod = 0;
     this.zoom = Game.ZOOM_INITIAL;
+    this.currentState = null;
     this.currentRoom = null;
     this.nextRoom = null;
-    this._active = false;
-
-    // add overlay
-    this.add(new GameOverlay({
-      onStageChange: n => this.onStageChange(n),
-      onComplete: () => this.onComplete(),
-    }));
   }
 
   /** @override */
@@ -38,29 +41,10 @@ class Game extends SceneNode {
     this.ref = {};
     this.ref.Player = this._getModule('Player');
     this.ref.Camera = this._getModule('Camera');
-    this.ref.UserInterface = this._getModule('UserInterface');
-
-    // on keyboard
-    this.ref.UserInterface.addEventListener('key', k => {
-      if (k.isKeyDown('e') && !this._getModule('MainLoop').isPaused()) {
-        this.onKeyPress();
-      }
-    });
 
     // group
     this.group = new THREE.Group();
     this._addToScene(this.group);
-
-    // floor
-    /*
-    this.distantFloor = new THREE.Mesh(
-      new THREE.BoxGeometry(100, 1, 100),
-      new THREE.MeshPhysicalMaterial({color:0x406659})
-    );
-    this.distantFloor.position.y = -3;
-    this.distantFloor.receiveShadow = true;
-    this.group.add(this.distantFloor);
-    */
 
     // lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -79,68 +63,66 @@ class Game extends SceneNode {
     this.directionalLight.position.copy(this.directionalLightOffset);
     this._addToScene(ambientLight, this.directionalLight, this.directionalLight.target);
 
-    // create room
+    // create player ball
+    const playerGeo = new THREE.SphereGeometry(Game.PLAYER_RADIUS, 32, 32);
+    playerGeo.translate(0, Game.PLAYER_RADIUS + Path.VERTICAL_OFFSET, 0);
+    const playerMat = new THREE.MeshPhysicalMaterial({
+      color: 0x444444, metalness: 1.0, roughness: 0.2, });
+    playerMat.envMap = this._getModule('Environment').getTexture('envMap');
+    this.playerMesh = new THREE.Mesh(playerGeo, playerMat);
+    this.playerMeshPositionPrevious = new THREE.Vector3();
+    this.playerMesh.castShadow = true;
+    this._addToScene(this.playerMesh);
+
+    // camera helpers
+    this.cameraTarget = new THREE.Vector3();
+    this.cameraPosition = new THREE.Vector3();
+
+    // set initial state
+    this.reset();
+  }
+
+  /** reset game */
+  reset() {
+    // clear children
+    for (let i=this.children.length-1; i>=0; i--) {
+      this.children[i].destroy();
+    }
+
+    // reset props
+    this.age = 0;
+    this.score = Game.SCORE_INITIAL;
+    this.numPaths = Game.PATHS_INITIAL;
+    this.currentSpeed = Game.SPEED_INITIAL;
+    this.speedDeathMod = 0;
+    this.zoom = Game.ZOOM_INITIAL;
+    this.currentRoom = null;
+    this.nextRoom = null;
+    this.setGameState(Game.STATE_HOLDING);
+
+    // create initial room
     this.addInitialise(new Room({
       position: new THREE.Vector3(),
       onEnter: room => this.onRoomEnter(room),
       onExit: room => this.onRoomExit(room),
     }));
 
-    // reset player
-    this.ref.Player.setPosition(new THREE.Vector3());
-
-    // camera helpers
-    this.cameraTarget = new THREE.Vector3();
-    this.cameraOffset = new THREE.Vector3(-2.5, 5, 5);
-    this.cameraPosition = new THREE.Vector3();
-
-    // create ball
-    const playerGeo = new THREE.SphereGeometry(Game.PLAYER_RADIUS, 32, 32);
-    playerGeo.translate(0, Game.PLAYER_RADIUS + Path.VERTICAL_OFFSET, 0);
-    const playerMat = new THREE.MeshPhysicalMaterial({ color: 0x444444, metalness: 1.0, roughness: 0.2, });
-    playerMat.envMap = this._getModule('Environment').getTexture('envMap');
-    this.playerMesh = new THREE.Mesh(playerGeo, playerMat);
-    this.playerMesh.castShadow = true;
-    this._addToScene(this.playerMesh);
-
-    // add DEV log
-    const dev = this._getModule('Dev');
-    dev.addStat('Current room', () => this.currentRoom ? this.currentRoom.id : 'null');
-    dev.addStat('Next room', () => this.nextRoom ? this.nextRoom.id : 'null');
+    // reset player position, mesh, light, camera
+    const origin = new THREE.Vector3();
+    this.ref.Player.setPosition(origin);
+    this.cameraTarget.copy(origin)
+    this.setPositions();
   }
 
   /** on stage changed */
   onStageChange(n) {
-    console.log('STAGE:', n);
-    switch (n) {
-      case 1:
-        this.numPaths = Game.PATHS_INITIAL;
-        this.currentSpeed = Game.SPEED_INITIAL;
-        this.zoom = Game.ZOOM_INITIAL;
-        break;
-      case 2:
-        this.numPaths = 3;
-        this.currentSpeed = 2;
-        this.zoom = 12/(12 + (n-1) * Game.ZOOM_INCREMENT);
-        break;
-      case 3:
-        this.numPaths = 4;
-        this.currentSpeed = 2.5;
-        this.zoom = 12/(12 + (n-1) * Game.ZOOM_INCREMENT);
-        break;
-      case 4:
-        this.numPaths = 5;
-        this.currentSpeed = 3;
-        this.zoom = 12/(12 + (n-1) * Game.ZOOM_INCREMENT);
-        break;
-      case 5:
-        this.numPaths = 6;
-        this.currentSpeed = 3.5;
-        this.zoom = 12/(12 + (n-1) * Game.ZOOM_INCREMENT);
-        break;
-      default:
-        break;
-    }
+    // stage [1,5] index [0,4]
+    const index = n - 1;
+
+    // set numpaths, speed, zoom
+    this.numPaths = Game.PATHS_INITIAL + index * Game.PATHS_INCREMENT;
+    this.currentSpeed = Game.SPEED_INITIAL + index * Game.SPEED_INCREMENT;
+    this.zoom = 12.5/(12.5 + index * Game.ZOOM_INCREMENT);
 
     // zoom out camera
     const camera = this._getModule('Camera');
@@ -155,11 +137,6 @@ class Game extends SceneNode {
     }));
   }
 
-  /** on game completed */
-  onComplete() {
-    console.log('Complete!');
-  }
-
   /** on room enter callback */
   onRoomEnter(room) {
     // set current room
@@ -167,7 +144,15 @@ class Game extends SceneNode {
 
     // create exit room/s
     const numPaths = Math.floor(this.numPaths);
-    const rooms = this.currentRoom.createAdjoiningRooms(numPaths);
+
+    // get rooms
+    let rooms = null;
+    if (this.currentState === Game.STATE_HOLDING) {
+      rooms = this.currentRoom.createRestRoom();
+    } else {
+      rooms = this.currentRoom.createAdjoiningRooms(numPaths);
+    }
+
     const currentRooms = this.children.filter(child => child.isRoom);
     rooms.forEach(room => {
       room.onEnter = room => this.onRoomEnter(room);
@@ -203,19 +188,34 @@ class Game extends SceneNode {
         child.blur();
       }
     });
-
-    // update stats
-    this.score += this.currentRoom.isPathDangerous() ? -1 : 0;
   }
 
   /** on room exit callback */
   onRoomExit(room) {
+    // check hit rubble
+    if (room.isPathDangerous()) {
+      this.score -= 1;
+
+      // change player colour
+      const blendFrom = 1 - ((this.score + 1) / Game.SCORE_INITIAL);
+      const blendTo = 1 - (this.score / Game.SCORE_INITIAL);
+      this.add(new Animation({
+        duration: 0.5,
+        callback: t => {
+          const blend = blendFrom + (blendTo - blendFrom) * t;
+          this.setPlayerMaterial(blend);
+        }
+      }));
+
+      // warning animation
+      this.createDeathAnimation(true);
+    }
+
     room.animateOutAndDestroy();
   }
 
   /** on key press -- switch tracks */
-  onKeyPress() {
-    if (!this._active) return;
+  onKeyDown() {
     if (this.nextRoom && this.currentRoom) {
       const entrance = this.currentRoom.getFlippedPosition(
         this.currentRoom.getExit());
@@ -254,23 +254,41 @@ class Game extends SceneNode {
     return room;
   }
 
-  /** activate room */
-  activate() {
-    this._active = true;
+  /** set game state */
+  setGameState(state) {
+    if (this.currentState === state) {
+      return;
+    }
+    this.currentState = state;
+    switch (this.currentState) {
+      case Game.STATE_DEAD:
+        this.playerMesh.visible = false;
+        this.createDeathAnimation();
+        break;
+      default:
+        this.setPlayerMaterial(0);
+        this.playerMesh.visible = true;
+        break;
+    }
   }
 
-  /** @override */
-  _update(delta) {
-    // set age
-    this.age += delta;
+  /** set player material */
+  setPlayerMaterial(blend) {
+    blend = Clamp(blend, 0, 1);
+    const r = Blend(Game.PLAYER_RGB[0], Game.PLAYER_RGB_ALT[0], blend);
+    const g = Blend(Game.PLAYER_RGB[1], Game.PLAYER_RGB_ALT[1], blend);
+    const b = Blend(Game.PLAYER_RGB[2], Game.PLAYER_RGB_ALT[2], blend);
+    this.playerMesh.material.color.setRGB(r, g, b);
+    this.playerMesh.material.metalness = Blend(1.0, 0.5, blend);
+    this.playerMesh.material.roughness = Blend(0.2, 0.6, blend);
+  }
 
-    // move player
-    const room = this.getCurrentRoom();
-    if (room) {
-      room.movePlayer(delta, this.currentSpeed);
-    }
+  /** set player, light, camera */
+  setPositions() {
+    // set previous
+    this.playerMeshPositionPrevious.copy(this.playerMesh.position);
 
-    // set player mesh position
+    // set new playermesh position
     const target = this.ref.Player.getPosition().clone();
     this.playerMesh.position.copy(target);
 
@@ -279,19 +297,127 @@ class Game extends SceneNode {
     this.directionalLight.position.copy(target).add(this.directionalLightOffset);
 
     // set camera
-    if (this.nextRoom) {
-      // BlendVector3(target, v, 1);
-    }
     this.cameraTarget.x += (target.x - this.cameraTarget.x) * 0.2;
     this.cameraTarget.y += (target.y - this.cameraTarget.y) * 0.2;
     this.cameraTarget.z += (target.z - this.cameraTarget.z) * 0.2;
-    this.cameraPosition.copy(this.cameraTarget).add(this.cameraOffset);
+    this.cameraPosition.copy(this.cameraTarget).add(Game.CAMERA_OFFSET);
     this.ref.Camera.setPosition(this.cameraPosition);
     this.ref.Camera.lookAt(this.cameraTarget);
+  }
 
-    // distant floor
-    //this.distantFloor.position.x = target.x;
-    //this.distantFloor.position.z = target.z;
+  /** create speed effect */
+  createSpeedParticles() {
+    const vec = this.playerMeshPositionPrevious.clone()
+      .sub(this.playerMesh.position).normalize();
+
+    const mat = this.playerMesh.material.clone();
+    const g = new THREE.Group();
+    const meshes = [];
+    const r = () => Math.random() * 2 - 1;
+    for (let i=0; i<1; i++) {
+      const rad = Game.PLAYER_RADIUS * 0.5 * Math.random() + 0.01;
+      const maxOff = Game.PLAYER_RADIUS - rad;
+      const sphere = new THREE.SphereGeometry(rad, 12, 12);
+      const mesh = new THREE.Mesh(sphere, mat);
+      mesh.userData.v = vec;//new THREE.Vector3(r(), r(), r()).normalize();
+      mesh.userData.p = new THREE.Vector3(r(), r(), r())
+        .normalize().multiplyScalar(maxOff);
+      mesh.userData.speed = 0.125 + Math.random() * 0.25;
+      g.add(mesh);
+      meshes.push(mesh);
+    }
+    g.position.copy(this.playerMesh.position);
+    g.position.y += Game.PLAYER_RADIUS + Path.VERTICAL_OFFSET;
+    this.group.add(g);
+
+    // animate
+    this.add(new Animation({
+      duration: 1,
+      callback: t => {
+        meshes.forEach(mesh => {
+          const u = mesh.userData;
+          mesh.position.x = u.p.x + u.v.x * u.speed * t;
+          mesh.position.y = u.p.y + u.v.y * u.speed * t;
+          mesh.position.z = u.p.z + u.v.z * u.speed * t;
+          mesh.scale.setScalar(Math.max(0.01, 1 - t));
+        });
+      },
+      onEnd: () => {
+        this.group.remove(g);
+      }
+    }));
+  }
+
+  /** death animation */
+  createDeathAnimation(warning=false) {
+    // warning animation
+    const n = warning ? 10 : 40;
+
+    // create meshes
+    const mat = this.playerMesh.material.clone();
+    const g = new THREE.Group();
+    const meshes = [];
+    const r = () => Math.random() * 2 - 1;
+    for (let i=0; i<n; i++) {
+      const size = Game.PLAYER_RADIUS * 0.5 * Math.random() + 0.01;
+      const sphere = new THREE.SphereGeometry(size, 12, 12);
+      const mesh = new THREE.Mesh(sphere, mat);
+      mesh.userData.v = new THREE.Vector3(r(), r(), r()).normalize();
+      mesh.userData.p = new THREE.Vector3();
+      mesh.userData.speed = 1 + Math.random() * 3;
+      g.add(mesh);
+      meshes.push(mesh);
+    }
+    g.position.copy(this.playerMesh.position);
+    g.position.y += Game.PLAYER_RADIUS + Path.VERTICAL_OFFSET;
+    this.group.add(g);
+
+    // animate
+    this.add(new Animation({
+      duration: 1,
+      callback: t => {
+        meshes.forEach(mesh => {
+          const u = mesh.userData;
+          mesh.position.x = u.p.x + u.v.x * u.speed * t;
+          mesh.position.y = u.p.y + u.v.y * u.speed * t;
+          mesh.position.z = u.p.z + u.v.z * u.speed * t;
+          mesh.scale.setScalar(Math.max(0.01, 1 - t));
+        });
+      },
+      onEnd: () => {
+        this.group.remove(g);
+      }
+    }));
+  }
+
+  /** @override */
+  _update(delta) {
+    // set age
+    this.age += delta;
+
+    // slow down on death
+    if (this.currentState === Game.STATE_DEAD) {
+      this.speedDeathMod += (1 - this.speedDeathMod) * 0.01;
+      if (this.speedDeathMod > 0.99) {
+        this.speedDeathMod = 1;
+      }
+    }
+
+    // move player
+    const room = this.getCurrentRoom();
+    if (room) {
+      room.movePlayer(delta, this.currentSpeed * (1 - this.speedDeathMod));
+    }
+
+    // set positions
+    this.setPositions();
+
+    // particle effects
+    if (this.currentState !== Game.STATE_DEAD) {
+      if (Math.random() > 0.95) {
+        this.createSpeedParticles();
+      }
+    }
   }
 }
 

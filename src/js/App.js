@@ -5,7 +5,7 @@ import * as PostProcessing from 'postprocessing';
 import * as Engine from 'engine';
 
 // scene/s
-import Game from './scene/Game';
+import GameWrapper from './scene/GameWrapper';
 
 // menu animation
 // import MenuAnimation from './scene/MenuAnimation';
@@ -15,7 +15,7 @@ class App {
     const root = Engine.CreateRoot('#app-target', {
       Camera: {
         orthographic: true,
-        width: 12,
+        width: 12.5,
         followPlayer: false,
       },
       Player: {
@@ -76,36 +76,19 @@ class App {
     	})
     ));
 
-    // create menu screens
-    const overlay = root.getModule('Overlay');
-    overlay.createScreen('home', {
-      title: '[ one button jam ]',
-      content: '[ press E ]',
-    });
-
-    // start game
-    root.getModule('UserInterface').addEventListener('key', keyboard => {
-      if (keyboard.isKeyDown('e') && root.getModule('MainLoop').isPaused()) {
-        root.resumeGame();
-        setTimeout(() => {
-          root._getSceneNode('Game').activate();
-        }, 200);
+    root.getModule('Overlay').createScreen(
+      'pause', {
+        content: {
+          innerHTML: 'Press [E] to resume.'
+        }
       }
-    });
-
-    // add menu animation
-    // root.getModule('MainLoop').add(new MenuAnimation());
+    );
 
     // add level/s
-    root.addScene( Game );
+    root.addScene( GameWrapper );
 
     // run
     root.run();
-
-    // dev -- autorun
-    if (root.getModule('Dev').isDevMode()) {
-      root.resumeGame();
-    }
   }
 }
 

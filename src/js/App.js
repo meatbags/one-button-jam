@@ -43,6 +43,12 @@ class App {
 
     // set up audio
     const audioHandler = root.getModule('AudioHandler');
+    audioHandler.addSound('introduction', './audio/introduction.mp3');
+    audioHandler.addSound('speed_01', './audio/speed_01.mp3');
+    audioHandler.addSound('speed_02', './audio/speed_02.mp3');
+    audioHandler.addSound('speed_03', './audio/speed_03.mp3');
+    audioHandler.addSound('interlude_02_03', './audio/interlude_02_03.mp3');
+    audioHandler.addSound('ending', './audio/ending.mp3');
 
     // add envmap
     const env = root.getModule('Environment');

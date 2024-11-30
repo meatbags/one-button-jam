@@ -79,7 +79,7 @@ class App {
     root.getModule('Overlay').createScreen(
       'pause', {
         content: {
-          innerHTML: 'Press [E] to resume.'
+          innerHTML: 'Press <span>[e]</span> to resume.'
         }
       }
     );

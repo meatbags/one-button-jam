@@ -8,7 +8,7 @@ class Room extends SceneNode {
   static ROOM_UID = 1;
   static DEFAULT_SIZE = 4.25;
   static ROOM_HEX = 0x87d0b7;
-  static ROOM_HEX_FOCUS = 0x87d0b7; // 0x94d5a3;
+  static ROOM_HEX_FOCUS = 0x87d0b7;
   static EXIT_OFFSET_MIN = 0.2;
   static EXIT_OFFSET_MAX = 0.8;
   static EXIT_OFFSET_STEP = 0.2;

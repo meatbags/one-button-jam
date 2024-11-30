@@ -24,13 +24,13 @@ class GameWrapper extends SceneNode {
         class: 'screen',
         children: [{
           type: 'h1',
-          innerText: 'D[e]RAILED',
+          innerHTML: 'D[e]RAILED',
         }, {
           type: 'p',
           innerHTML: `
-            Avoid dangerous paths! Switch tracks with [e]. Survive for two minutes!
+            Avoid dangerous paths! Switch tracks with <span>[e]</span>. Survive for two minutes!
             <br><br>
-            Press [e] to begin!
+            Press <span>[e]</span> to begin!
           `
         }]
       },
@@ -40,11 +40,11 @@ class GameWrapper extends SceneNode {
         class: 'screen',
         children: [{
           type: 'h1',
-          innerText: 'You died!',
+          innerHTML: 'You died!',
         }, {
           type: 'p',
           innerHTML: `
-            Press [e] to try again.
+            Press <span>[e]</span> to try again.
           `
         }]
       },
@@ -54,12 +54,12 @@ class GameWrapper extends SceneNode {
         class: 'screen',
         children: [{
           type: 'h1',
-          innerText: 'Congratulations!',
+          innerHTML: 'Congratulations!',
         }, {
           type: 'p',
           innerHTML: `
             You scored <span data-id="score"></span>.<br><br>
-            Press [e] to play again.
+            Press <span>[e]</span> to play again.
           `
         }]
       },

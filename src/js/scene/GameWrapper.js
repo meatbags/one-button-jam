@@ -28,7 +28,7 @@ class GameWrapper extends SceneNode {
         }, {
           type: 'p',
           innerHTML: `
-            Avoid dangerous paths! Switch tracks with [e]. Survive 5 stages.
+            Avoid dangerous paths! Switch tracks with [e]. Survive for two minutes!
             <br><br>
             Press [e] to begin!
           `
@@ -40,12 +40,10 @@ class GameWrapper extends SceneNode {
         class: 'screen',
         children: [{
           type: 'h1',
-          innerText: 'D[E]RAILED',
+          innerText: 'You died!',
         }, {
           type: 'p',
           innerHTML: `
-            You died!
-            <br><br>
             Press [e] to try again.
           `
         }]
@@ -56,12 +54,11 @@ class GameWrapper extends SceneNode {
         class: 'screen',
         children: [{
           type: 'h1',
-          innerText: 'D[E]RAILED',
+          innerText: 'Congratulations!',
         }, {
           type: 'p',
           innerHTML: `
-            You won!
-            <br><br>
+            You scored <span data-id="score"></span>.<br><br>
             Press [e] to play again.
           `
         }]
@@ -175,11 +172,15 @@ class GameWrapper extends SceneNode {
     // hide score, show win screen
     this._getSceneNode('GameScore').hide();
     this._getSceneNode('Game').setGameState(Game.STATE_HOLDING);
+    const score = this.screen.success.getElement().querySelector('[data-id="score"]');
+    if (score) {
+      score.innerText = `${this._getSceneNode('Game').score}/${Game.SCORE_INITIAL}`;
+    }
     this.screen.success.show();
-    
+
     setTimeout(() => {
       this._locked = false;
-    }, 500);
+    }, 1000);
   }
 }
 

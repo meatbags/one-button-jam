@@ -12,6 +12,7 @@ class Room extends SceneNode {
   static EXIT_OFFSET_MIN = 0.2;
   static EXIT_OFFSET_MAX = 0.8;
   static EXIT_OFFSET_STEP = 0.2;
+  static FLOOR_SCALE = 0.925;
   static CARDINAL = [
     new THREE.Vector3(0, 0, -1),
     new THREE.Vector3(1, 0, 0),
@@ -57,11 +58,15 @@ class Room extends SceneNode {
     // create floor block
     const geo2 = new THREE.BoxGeometry(this.size.x, 0.5, this.size.z);
     geo2.translate(0, -0.25, 0);
-    const mat2 = new THREE.MeshPhysicalMaterial({color: Room.ROOM_HEX, transparent: true });
+    const mat2 = new THREE.MeshPhysicalMaterial({
+      color: Room.ROOM_HEX,
+      transparent: true,
+      envMap: this._getModule('Environment').getTexture('envMap')
+    });
     this.floorMesh = new THREE.Mesh(geo2, mat2);
     this.floorMesh.receiveShadow = true;
     this.floorMesh.castShadow = true;
-    this.floorMesh.scale.set(0.98, 1, 0.98);
+    this.floorMesh.scale.set(Room.FLOOR_SCALE, 1, Room.FLOOR_SCALE);
     this.group.add(this.floorMesh);
 
     // create valid path/s
@@ -104,11 +109,17 @@ class Room extends SceneNode {
     // select random path
     this.selectedPathIndex = Math.floor(Math.random() * this.paths.length);
 
+    // set active path
+    this.activePath = this.paths[this.selectedPathIndex];
+
     // create path marker, smaller path marker
     const markerGeo = new THREE.ConeGeometry(0.25, 1, 32);
     markerGeo.rotateX(Math.PI);
     markerGeo.translate(0, 0.5, 0);
-    const markerMat = new THREE.MeshPhysicalMaterial({color: 0xffff00});
+    const markerMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffff00,
+      envMap: this._getModule('Environment').getTexture('envMap')
+    });
     this.pathMarkerMesh = new THREE.Mesh(markerGeo, markerMat);
     // this.pathMarkerMesh.castShadow = true;
     this.pathMarker = new THREE.Group();
@@ -117,26 +128,18 @@ class Room extends SceneNode {
     const markerGeo2 = new THREE.ConeGeometry(0.25, 1, 32);
     markerGeo2.rotateX(Math.PI);
     markerGeo2.translate(0, 0.5, 0);
-    const markerMat2 = new THREE.MeshPhysicalMaterial({color: 0xffff00});
+    const markerMat2 = new THREE.MeshPhysicalMaterial({
+      color: 0xffff00,
+      envMap: this._getModule('Environment').getTexture('envMap')
+    });
     this.pathMarkerMesh2 = new THREE.Mesh(markerGeo, markerMat);
     this.pathMarkerMesh2.scale.setScalar(0.4);
-    // this.pathMarkerMesh.castShadow = true;
     this.pathMarker2 = new THREE.Group();
     this.pathMarker2.visible = false;
     this.pathMarker2.add(this.pathMarkerMesh2);
 
     // add to group
     this.group.add(this.pathMarker, this.pathMarker2);
-
-    // focus helper
-    //const mat3 = new THREE.MeshBasicMaterial({color: 0xffff00, wireframe: true });
-    //const geo = new THREE.PlaneGeometry(this.size.x, this.size.z);
-    //const mesh3 = new THREE.Mesh(geo, mat3);
-    //mesh3.rotation.x = -Math.PI / 2;
-    //mesh3.position.y += 0.01;
-    //this.focusHelper = mesh3;
-    //this.focusHelper.visible = false;
-    //this.group.add(this.focusHelper);
 
     // set initial path marker
     this.setPathMarker();
@@ -225,6 +228,11 @@ class Room extends SceneNode {
   getExit() {
     if (!this.activePath) return null;
     return this.activePath.getExit();
+  }
+
+  /** get entrance */
+  getEntrance() {
+    return this.validEntrance;
   }
 
   /** count exits from entrance */
@@ -358,6 +366,11 @@ class Room extends SceneNode {
     this.floorMesh.material.color.setHex(Room.ROOM_HEX);
     this.pathMarker.visible = false;
     this.pathMarker2.visible = false;
+
+    // diminish path intensity
+    if (this.activePath) {
+      this.activePath.onParentBlur();
+    }
   }
 
   /** animate in */

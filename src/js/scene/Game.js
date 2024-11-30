@@ -67,8 +67,11 @@ class Game extends SceneNode {
     const playerGeo = new THREE.SphereGeometry(Game.PLAYER_RADIUS, 32, 32);
     playerGeo.translate(0, Game.PLAYER_RADIUS + Path.VERTICAL_OFFSET, 0);
     const playerMat = new THREE.MeshPhysicalMaterial({
-      color: 0x444444, metalness: 1.0, roughness: 0.2, });
-    playerMat.envMap = this._getModule('Environment').getTexture('envMap');
+      color: 0x444444,
+      metalness: 1.0,
+      roughness: 0.2,
+      envMap: this._getModule('Environment').getTexture('envMap'),
+    });
     this.playerMesh = new THREE.Mesh(playerGeo, playerMat);
     this.playerMeshPositionPrevious = new THREE.Vector3();
     this.playerMesh.castShadow = true;
@@ -101,11 +104,13 @@ class Game extends SceneNode {
     this.setGameState(Game.STATE_HOLDING);
 
     // create initial room
-    this.addInitialise(new Room({
+    const room = new Room({
       position: new THREE.Vector3(),
       onEnter: room => this.onRoomEnter(room),
       onExit: room => this.onRoomExit(room),
-    }));
+    });
+    this.addInitialise(room);
+    room.focus(room.getEntrance());
 
     // reset player position, mesh, light, camera
     const origin = new THREE.Vector3();
@@ -162,7 +167,7 @@ class Game extends SceneNode {
       // animate room in
       room.animateIn();
 
-      // prevent doubling
+      // prevent overlapping rooms
       currentRooms.forEach(current => {
         if (room.contains(current.position)) {
           current.animateOutAndDestroy();

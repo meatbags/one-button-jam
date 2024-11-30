@@ -5,7 +5,7 @@ import Game from './Game';
 
 class GameScore extends SceneNode {
   static STAGES = 5;
-  static GAME_TIME_MAX = 120;// 120;
+  static GAME_TIME_MAX = 120;
   static EVENT_STAGE_CHANGE = 'stage_change';
   static EVENT_GAME_COMPLETE = 'game_complete';
   static EVENT_DIE = 'game_die';

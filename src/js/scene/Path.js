@@ -13,8 +13,10 @@ class Path extends SceneNode {
   static COLLISION_THRESHOLD = 0.8;
   static COLLISION_OFFSET_MAX = 0.25;
   static VERTICAL_OFFSET = 0.5;
-  static PATH_UID = 0;
   static HEX = 0x888888;
+  static RAIL_HEX = 0xaaaaaa;
+  static RAIL_HEX_SELECTED = 0xffff00;
+  static PATH_UID = 0;
 
   constructor(a, b) {
     super({ label: 'Path_' + (++Path.PATH_UID) });
@@ -48,7 +50,9 @@ class Path extends SceneNode {
       const mat = new THREE.MeshPhysicalMaterial({
         color: Path.HEX,
         transparent: true,
+        envMap: this._getModule('Environment').getTexture('envMap'),
       });
+      mat.envMap = this._getModule('Environment').getTexture('envMap');
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -63,7 +67,9 @@ class Path extends SceneNode {
     const mat = new THREE.MeshPhysicalMaterial({
       color: Path.HEX,
       transparent: true,
+      envMap: this._getModule('Environment').getTexture('envMap'),
     });
+    mat.envMap = this._getModule('Environment').getTexture('envMap');
     if (!this.isStraight) {
       const w = width / 2;
       const h = height / 2;
@@ -96,8 +102,9 @@ class Path extends SceneNode {
     // rails
     const off = 0.03;
     const mat2 = new THREE.MeshPhysicalMaterial({
-      color: 0xffff00,
+      color: Path.RAIL_HEX,
       transparent: true,
+      envMap: this._getModule('Environment').getTexture('envMap'),
     });
     if (!this.isStraight) {
       const shape2 = new THREE.Shape();
@@ -173,8 +180,12 @@ class Path extends SceneNode {
         rad *= 0.1 + ((u - uStart) / (1 - uStart)) * 0.9;
         const ball = new THREE.BoxGeometry(rad, rad, rad);
         ball.translate(0, rad / 2 + Path.VERTICAL_OFFSET, 0);
-        const mat = new THREE.MeshPhysicalMaterial({ color: Path.HEX, metalness: 0.5, roughness: 0.2, });
-        mat.envMap = this._getModule('Environment').getTexture('envMap');
+        const mat = new THREE.MeshPhysicalMaterial({
+          color: Path.HEX,
+          metalness: 0.5,
+          roughness: 0.2,
+          envMap: this._getModule('Environment').getTexture('envMap'),
+        });
         const mesh = new THREE.Mesh(ball, mat);
         mesh.rotation.y = Math.PI * Math.random();
         this.curve.getPointAt(u, mesh.position);
@@ -190,9 +201,9 @@ class Path extends SceneNode {
 
   /** make inactive */
   makeInactive() {
-    const grey = 0x888888;
+    //const grey = 0x888888;
     //this.helpers.forEach(mesh => mesh.material.color.setHex(grey));
-    this.lineMesh.material.color.setHex(grey);
+    //this.lineMesh.material.color.setHex(grey);
   }
 
   /** assert is dangerous */
@@ -241,11 +252,30 @@ class Path extends SceneNode {
   /** focus */
   focus() {
     this.lineMeshSelected.visible = true;
+    this.lineMeshSelected.traverse(obj => {
+      if (obj.material) {
+        obj.material.color.setHex(Path.RAIL_HEX_SELECTED);
+      }
+    });
   }
 
   /** blur */
   blur() {
     this.lineMeshSelected.visible = false;
+    this.lineMeshSelected.traverse(obj => {
+      if (obj.material) {
+        obj.material.color.setHex(Path.RAIL_HEX);
+      }
+    });
+  }
+
+  /** parent room blurred */
+  onParentBlur() {
+    this.lineMeshSelected.traverse(obj => {
+      if (obj.material) {
+        obj.material.color.setHex(Path.RAIL_HEX);
+      }
+    });
   }
 
   /** util: get bezier set from points */

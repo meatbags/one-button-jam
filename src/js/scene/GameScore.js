@@ -8,6 +8,7 @@ class GameScore extends SceneNode {
   static GAME_TIME_MAX = 120;
   static EVENT_STAGE_CHANGE = 'stage_change';
   static EVENT_GAME_COMPLETE = 'game_complete';
+  static EVENT_LOSE_LIFE = 'lose_life';
   static EVENT_DIE = 'game_die';
   static DEV_INVINCIBLE = false;
 
@@ -105,8 +106,9 @@ class GameScore extends SceneNode {
           }
         }
 
-        // check dead
+        // check score changed
         if (this.score === null || this.score !== this.ref.Game.score) {
+          const lostLife = this.score > this.ref.Game.score;
           this.score = this.ref.Game.score;
           this.uiLives.forEach((div, i) => {
             if (i + 1 > this.score) {
@@ -115,7 +117,12 @@ class GameScore extends SceneNode {
               div.dataset.hidden = 0;
             }
           });
+          if (lostLife) {
+            this.emit(GameScore.EVENT_LOSE_LIFE, this.score);
+          }
         }
+
+        // check dead
         if (this.ref.Game.score <= 0 && !this.complete && !GameScore.DEV_INVINCIBLE) {
           this.emit(GameScore.EVENT_DIE);
         }

@@ -43,12 +43,19 @@ class App {
 
     // set up audio
     const audioHandler = root.getModule('AudioHandler');
-    audioHandler.addSound('introduction', './audio/introduction.mp3');
-    audioHandler.addSound('speed_01', './audio/speed_01.mp3');
-    audioHandler.addSound('speed_02', './audio/speed_02.mp3');
-    audioHandler.addSound('speed_03', './audio/speed_03.mp3');
-    audioHandler.addSound('interlude_02_03', './audio/interlude_02_03.mp3');
-    audioHandler.addSound('ending', './audio/ending.mp3');
+    audioHandler.preloadSound('introduction', './audio/introduction.mp3');
+    audioHandler.preloadSound('speed_01', './audio/speed_01.mp3');
+    audioHandler.preloadSound('speed_02', './audio/speed_02.mp3');
+    audioHandler.preloadSound('speed_03', './audio/speed_03.mp3');
+    audioHandler.preloadSound('interlude_02_03', './audio/interlude_02_03.mp3');
+    audioHandler.preloadSound('ending', './audio/ending.mp3');
+    audioHandler.preloadSound('death_01', './audio/death_01.mp3');
+    audioHandler.preloadSound('explosion', './audio/explosion.mp3');
+    audioHandler.preloadSound('life_01', './audio/life_01.mp3');
+    audioHandler.preloadSound('life_02', './audio/life_02.mp3');
+    audioHandler.preloadSound('life_03', './audio/life_03.mp3');
+    audioHandler.preloadSound('life_04', './audio/life_04.mp3');
+    audioHandler.preloadSound('life_05', './audio/life_05.mp3');
 
     // add envmap
     const env = root.getModule('Environment');

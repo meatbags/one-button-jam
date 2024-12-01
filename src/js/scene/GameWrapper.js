@@ -80,6 +80,8 @@ class GameWrapper extends SceneNode {
     // events
     const score = this._getSceneNode('GameScore');
     score.addEventListener(
+      GameScore.EVENT_LOSE_LIFE, lives => this.onLoseLife(lives));
+    score.addEventListener(
       GameScore.EVENT_STAGE_CHANGE, stage => this.onStageChange(stage));
     score.addEventListener(
       GameScore.EVENT_DIE, () => this.onDie());
@@ -166,6 +168,15 @@ class GameWrapper extends SceneNode {
     }, 500);
   }
 
+  /** on life lost */
+  onLoseLife(lives) {
+    // lives [4, 0] -> [1, 5]
+    const inv = 5 - lives;
+    if (inv <= 4) {
+      this.doAudioEvent('play_sound', `life_0${inv}`);
+    }
+  }
+
   /** on die */
   onDie() {
     if (this._locked) return;
@@ -175,14 +186,17 @@ class GameWrapper extends SceneNode {
     this._getSceneNode('GameScore').hide();
 
     // audio
-    this.doAudioEvent('die');
+    this.killAudio();
+    this.doAudioEvent('play_sound', 'life_05');
 
     // set dead, show retry screen
     setTimeout(() => {
       this._getSceneNode('Game').setGameState(Game.STATE_DEAD);
+      this.doAudioEvent('play_sound', 'explosion');
       setTimeout(() => {
         this.screen.fail.show();
         this._locked = false;
+        this.doAudioEvent('play_sound', 'death_01');
       }, 500);
     }, 1000);
   }
@@ -219,13 +233,13 @@ class GameWrapper extends SceneNode {
   }
 
   /** do audio event */
-  doAudioEvent(e) {
+  doAudioEvent(e, data=null) {
     // set up
     const audioHandler = this._getSceneNode('AudioHandler');
     const context = audioHandler.getAudioContext();
     const output = audioHandler.getCompressorNode();
 
-    console.log('doAudioEvent', e);
+    // console.log('doAudioEvent', e, data);
 
     // do audio event
     switch (e) {
@@ -384,8 +398,25 @@ class GameWrapper extends SceneNode {
         });
         break;
       }
-      case 'die': {
-        this.killAudio();
+      case 'play_sound': {
+        // get intro buffer
+        const buffer = audioHandler.getSound(data);
+        const node = new AudioBufferSourceNode(context, {buffer: buffer});
+        node.connect(output);
+        node.start();
+
+        // ref
+        this.audio[data] = {
+          node: node,
+        };
+
+        // destroy sound on end
+        node.addEventListener('ended', e => {
+          if (this.audio[data]) {
+            this.audio[data].node.disconnect();
+            this.audio[data] = null;
+          }
+        });
         break;
       }
       default:
